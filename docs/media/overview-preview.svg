@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">Saathi project overview</title>
+  <desc id="desc">Play button preview. Open the linked overview in Google Drive.</desc>
+  <rect width="640" height="360" rx="20" fill="#0b172a"/>
+  <rect x="24" y="24" width="592" height="312" rx="12" fill="#12263e"/>
+  <text x="48" y="68" fill="#00c9f2" font-family="Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="3">SAATHI</text>
+  <circle cx="320" cy="165" r="46" fill="#00baf2"/>
+  <path d="M309 143 L309 187 L344 165 Z" fill="#ffffff"/>
+  <text x="320" y="254" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="30" font-weight="700">Project overview</text>
+  <text x="320" y="292" text-anchor="middle" fill="#b7c9dd" font-family="Arial, sans-serif" font-size="18">Open on Google Drive &#8599;</text>
+</svg>

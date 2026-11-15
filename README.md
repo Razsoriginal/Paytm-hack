@@ -24,6 +24,15 @@ Beyond those, Saathi also handles everyday jobs:
 It is not a trip planner. It is a cross-service teammate that acts, handles what goes wrong,
 and feeds merchants better offers.
 
+## Demo and overview
+
+Click a preview to open it in Google Drive.
+
+| Demo video | Project overview |
+| :---: | :---: |
+| [![Play the Saathi demo](docs/media/demo-preview.svg)](https://drive.google.com/file/d/1janP7DSdrGsl_6voFR-DZch81g93Y65P/view?usp=sharing) | [![Open the Saathi overview](docs/media/overview-preview.svg)](https://drive.google.com/file/d/1BIOqzoh134VjgszOwslMIWm-qR5AFyy6/view?usp=sharing) |
+| [Watch demo](https://drive.google.com/file/d/1janP7DSdrGsl_6voFR-DZch81g93Y65P/view?usp=sharing) | [View overview](https://drive.google.com/file/d/1BIOqzoh134VjgszOwslMIWm-qR5AFyy6/view?usp=sharing) |
+
 ## Run it
 
 ```bash
