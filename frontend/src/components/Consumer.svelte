@@ -1,22 +1,34 @@
 <script>
 	import {
-		BedDouble, Bell, BusFront, CircleAlert, Gift, Info, Luggage, MessageCircle, Plane, Plus,
-		ShieldCheck, Smartphone, TrainFront, Trash, Wallet,
+		BedDouble, Bell, BusFront, CalendarClock, ChartPie, CircleAlert, Gift, Info, LifeBuoy, Luggage,
+		MessageCircle, Plane, Plus, ReceiptText, ShieldCheck, TrainFront, Trash, Wallet, X,
 	} from '@lucide/svelte';
 	import { api, inr } from '../lib/api.js';
 	import { app } from '../lib/state.svelte.js';
 	import Chat from './Chat.svelte';
 	import Receipt from './Receipt.svelte';
+	import Spend from './Spend.svelte';
 	import Timeline from './Timeline.svelte';
 
 	const categories = ['budget', 'travel_mode', 'cuisine', 'pace', 'price_sensitivity', 'time_slot'];
 	const hints = [
 		[Plane, 'Plan and book a trip', 'Mumbai se Goa kal 2 raat'],
 		[CircleAlert, 'Fix a failed payment', 'Mere paise kat gaye'],
-		[Smartphone, 'Recharge a phone', 'Jio 299 recharge'],
+		[ChartPie, 'Understand my spending', 'How much did I spend on food last month?'],
 	];
+	const attach = $derived({
+		purpose: 'bill',
+		path: `/consumer/${app.uid}/bills`,
+		label: 'Upload a bill to pay',
+	});
+	let dates = $state({});
+	let changing = $state({});
 	const kindIcon = { train: TrainFront, bus: BusFront, flight: Plane, hotel: BedDouble };
-	const consentTitle = { personalisation: 'Personal plans', offers: 'Offers from nearby shops' };
+	const consentTitle = {
+		personalisation: 'Personal plans',
+		offers: 'Offers from nearby shops',
+		spend_insights: 'Spend insights',
+	};
 	let tab = $state('chat');
 	let d = $state(null);
 	let cat = $state('budget');
@@ -29,6 +41,7 @@
 	const tabs = $derived([
 		['chat', 'Chat', MessageCircle],
 		['trips', 'Trips', Luggage],
+		['spend', 'Spend', ChartPie],
 		['inbox', offers ? `Inbox (${offers})` : 'Inbox', Bell],
 		['data', 'My data', ShieldCheck],
 	]);
@@ -56,6 +69,18 @@
 		act(async () => {
 			await api(`/consumer/${app.uid}/prefs`, 'POST', { category: cat, value: val });
 			val = '';
+		});
+	const change = (b, action) =>
+		act(async () => {
+			const text = action === 'concern' ? window.prompt('What went wrong with this trip?') : '';
+			if (action === 'concern' && !text) return;
+			const r = await api(`/consumer/${app.uid}/bookings/${b.id}/change`, 'POST', {
+				action,
+				new_date: dates[b.id],
+				text,
+			});
+			note = r.reply;
+			if (r.approval) changing[b.id] = r.approval;
 		});
 	const startRedeem = (n) =>
 		act(async () => {
@@ -103,6 +128,7 @@
 						lang={me.language}
 						name={me.name.split(' ')[0]}
 						{hints}
+						{attach}
 						onchange={load}
 					/>
 				{/key}
@@ -117,25 +143,81 @@
 							<p class="hint max-w-60">No trips yet. Ask in chat: “Mumbai se Goa kal 2 raat”.</p>
 						</div>
 					{/if}
-					{#each d.bookings as b}
-						<article class="rounded-2xl border border-line p-4">
+					{#each d.bookings as b (b.id)}
+						{@const live = b.status === 'confirmed'}
+						{@const upcoming = b.travel_date >= new Date().toISOString().slice(0, 10)}
+						<article class="grid gap-3 rounded-2xl border border-line p-4">
 							<div class="flex items-start justify-between gap-3">
 								<h3 class="font-semibold">{b.title}</h3>
 								<p class="font-display font-extrabold tabular-nums">{inr(b.total)}</p>
 							</div>
-							<ol class="mt-3 grid gap-2">
+							<ol class="grid gap-2">
 								{#each b.items as it}
 									{@const Icon = kindIcon[it.kind] ?? Luggage}
 									<li class="flex items-center gap-2.5 text-sm">
 										<span class="icon-dot size-8 rounded-xl"><Icon size={16} /></span>
 										<span class="flex-1">{it.details.name}</span>
-										<span class="chip {it.status === 'confirmed' ? 'chip-go' : ''}">{it.status}</span>
+										<span class="chip {it.status === 'confirmed' ? 'chip-go' : 'chip-stop'}">{it.status}</span>
 									</li>
 								{/each}
 							</ol>
+							{#if b.timeline.length > 1}
+								<ol class="grid gap-1 border-l-2 border-line pl-3 text-xs text-mute">
+									{#each b.timeline as ev}<li>{ev.event}</li>{/each}
+								</ol>
+							{/if}
+							{#if changing[b.id]}
+								<Receipt
+									approval={changing[b.id]}
+									onresult={(r) => {
+										note = r.reply;
+										changing[b.id] = r.approval ?? null;
+										load();
+									}}
+								/>
+							{:else if live}
+								<div class="grid gap-2 border-t border-line pt-3">
+									{#if upcoming}
+									<div class="flex flex-wrap items-center gap-2">
+										<input
+											type="date"
+											class="field flex-1"
+											aria-label="New travel date"
+											oninput={(e) => (dates[b.id] = e.currentTarget.value)}
+										/>
+										<button class="btn" disabled={!dates[b.id]} onclick={() => change(b, 'reschedule')}>
+											<CalendarClock size={15} /> Reschedule
+										</button>
+									</div>
+									{/if}
+									<div class="flex flex-wrap gap-2">
+										{#if upcoming}
+											<button class="btn btn-danger" onclick={() => change(b, 'cancel')}>
+												<X size={15} /> Cancel trip
+											</button>
+										{/if}
+										<button class="btn" onclick={() => change(b, 'concern')}>
+											<LifeBuoy size={15} /> Raise a concern
+										</button>
+									</div>
+								</div>
+							{/if}
 						</article>
 					{/each}
+					{#if note}<p class="rounded-2xl bg-face-soft px-4 py-2 text-sm text-face-deep">{note}</p>{/if}
+					{#if d.tickets.length}
+						<h3 class="font-semibold">Your tickets</h3>
+						{#each d.tickets as tk}
+							<p class="flex items-center gap-2 rounded-2xl bg-ground px-3 py-2 text-sm">
+								<ReceiptText size={15} class="shrink-0 text-face" />
+								<span class="flex-1">Ticket {tk.ticket_id}: {tk.summary}</span>
+								<span class="chip {tk.status === 'open' ? 'chip-wait' : 'chip-go'}">{tk.status}</span>
+							</p>
+						{/each}
+					{/if}
 				</div>
+			{:else if tab === 'spend'}
+				{#key app.uid}<Spend userId={app.uid} />{/key}
 			{:else if tab === 'inbox'}
 				<div class="grid gap-4 p-5">
 					<h2 class="title">Inbox</h2>

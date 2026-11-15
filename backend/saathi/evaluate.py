@@ -39,6 +39,11 @@ All figures come from the simulated database after running every planted scenari
 | Bridge uplift (points) | {b.get('uplift_points')} |
 | Bridge incremental ₹ | {b.get('incremental_inr')} |
 | Bridge opt-out rate (guardrail) | {b.get('opt_out_rate')} |
+| Bills paid from uploads | {m['features']['bills_paid']} (₹{m['features']['bills_paid_inr']:.0f}) |
+| Bills read with no correction needed % | {m['features']['extraction_auto_accept_pct']} |
+| Booking changes handled | {m['features']['booking_changes']} |
+| Spend questions answered | {m['features']['spend_questions']} |
+| Stock added (₹ at cost) | {m['features']['stock_added_inr']:.0f} |
 | p50 time to resolution (s) | {m['resolution_p50_s']} |
 | **Policy violations (must be 0)** | **{len(m['policy_violations'])}** |
 

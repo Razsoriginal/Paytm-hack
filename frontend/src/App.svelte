@@ -18,6 +18,7 @@
 	const partnerNames = {
 		sarvam_llm: 'Sarvam language',
 		sarvam_speech: 'Sarvam voice',
+		document_ai: 'Sarvam Document AI',
 		cognee: 'Cognee memory',
 		paytm_pg: 'Paytm gateway',
 	};

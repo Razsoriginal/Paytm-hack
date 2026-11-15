@@ -37,3 +37,13 @@ export function listen(lang, onText, onError) {
 	rec.onerror = () => onError('I could not hear that. Try again or type your message.');
 	rec.start();
 }
+
+/** Send a picked file, or the name of a seeded sample, as multipart form data. */
+export async function upload(path, { file, sample }) {
+	const form = new FormData();
+	if (file) form.append('file', file);
+	else form.append('sample', sample);
+	const r = await fetch(`/api${path}`, { method: 'POST', body: form });
+	if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+	return r.json();
+}

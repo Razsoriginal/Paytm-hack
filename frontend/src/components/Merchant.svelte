@@ -1,17 +1,25 @@
 <script>
 	import {
-		Bell, BookOpenText, HandCoins, KeyRound, Lightbulb, MessageCircle, ShieldCheck, Tag, Users, Zap,
+		Bell, BookOpenText, Boxes, HandCoins, KeyRound, Lightbulb, MessageCircle, ShieldCheck, Tag,
+		Users, Zap,
 	} from '@lucide/svelte';
 	import { api, inr } from '../lib/api.js';
 	import { app } from '../lib/state.svelte.js';
 	import Chat from './Chat.svelte';
+	import Stock from './Stock.svelte';
 	import Timeline from './Timeline.svelte';
 
 	const hints = [
 		[HandCoins, 'Money has not reached me', 'Mera paisa nahi aaya'],
 		[BookOpenText, 'Collect Khata dues', 'Udhaar vasool karna hai'],
-		[Tag, 'Bring in new customers', 'Naye customer ke liye offer'],
+		[Boxes, 'Check or add stock', 'What is running low?'],
 	];
+	const attach = $derived({
+		purpose: 'stock',
+		path: `/merchant/${app.mid}/stock-upload`,
+		label: 'Upload a supplier invoice or stock list',
+	});
+	let bump = $state(0);
 	const tiers = {
 		T1: 'Soundbox only. Saathi speaks and asks as little as possible.',
 		T2: 'Billing and payments: Khata, payment links, invoices.',
@@ -26,6 +34,8 @@
 		send_khata_reminder: 'Remind customers about dues',
 		create_offer_campaign: 'Launch an offer',
 		start_loan_application: 'Start a loan application',
+		add_product: 'Add stock (small amounts)',
+		adjust_stock: 'Adjust stock, with undo',
 	};
 	const groups = [
 		['L2', 'Does on its own, then tells you', Zap, 'chip-go'],
@@ -34,6 +44,7 @@
 	];
 	const tabs = [
 		['chat', 'Chat', MessageCircle],
+		['stock', 'Stock', Boxes],
 		['customers', 'Customers', Users],
 		['rules', 'Permissions', KeyRound],
 		['inbox', 'Updates', Bell],
@@ -42,6 +53,10 @@
 	let d = $state(null);
 	const me = $derived(app.boot.merchants.find((m) => m.id === app.mid));
 
+	function changed() {
+		bump += 1;
+		load();
+	}
 	async function load(id = app.mid) {
 		const fresh = await api(`/merchant/${id}`);
 		if (id === app.mid) d = fresh;
@@ -76,8 +91,17 @@
 		<div class="flex min-h-0 flex-1 flex-col overflow-auto">
 			{#if tab === 'chat'}
 				{#key app.mid}
-					<Chat type="merchant" id={app.mid} lang={me.language} {hints} onchange={load} />
+					<Chat
+						type="merchant"
+						id={app.mid}
+						lang={me.language}
+						{hints}
+						attach={me.tier === 'T1' ? null : attach}
+						onchange={changed}
+					/>
 				{/key}
+			{:else if tab === 'stock'}
+				{#key app.mid}<Stock merchantId={app.mid} {bump} />{/key}
 			{:else if !d}
 				<p class="hint p-5">Loading…</p>
 			{:else if tab === 'customers'}

@@ -1,6 +1,7 @@
 <script>
 	import {
-		BookOpenText, CircleAlert, Gift, HandCoins, LoaderCircle, Plane, Play, RotateCcw,
+		BookOpenText, Boxes, CalendarClock, ChartPie, CircleAlert, Gift, HandCoins, LoaderCircle, Plane,
+		Play, ReceiptText, RotateCcw,
 	} from '@lucide/svelte';
 	import { api } from '../lib/api.js';
 	import { app, resetAll } from '../lib/state.svelte.js';
@@ -9,9 +10,13 @@
 	const groups = {
 		C1: ['Book a trip', Plane],
 		C2: ['Fix a failed payment or refund', CircleAlert],
+		C3: ['Upload a bill and pay', ReceiptText],
+		C4: ['Change or cancel a booking', CalendarClock],
+		C5: ['Ask about spending', ChartPie],
 		B1: ['Turn preferences into an offer', Gift],
 		W1: ['Money has not reached the shop', HandCoins],
 		W2: ['Collect Khata dues', BookOpenText],
+		M1: ['Manage stock', Boxes],
 	};
 	let runs = $state([]);
 	let busy = $state('');

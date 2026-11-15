@@ -13,6 +13,14 @@ outcome.
 - **The bridge**: consented user preferences become a cohort count, the merchant approves an
   offer, matching users get it with a reason, and uplift is measured against a holdout.
 
+Beyond those, Saathi also handles everyday jobs:
+
+- **Upload a bill and pay** (C3): attach a photo or PDF, check what was read, approve once.
+- **Manage a booking** (C4): reschedule, cancel or raise a concern, with the exact fee and
+  refund shown before anything changes.
+- **Spend insights and budgets** (C5): ask about your own spending; set budgets and goals.
+- **Inventory for shops** (M1): add, adjust and check stock by chat, voice or invoice upload.
+
 It is not a trip planner. It is a cross-service teammate that acts, handles what goes wrong,
 and feeds merchants better offers.
 
@@ -24,7 +32,7 @@ make ui             # build the Svelte UI (needs Node 20+); `make dev` does this
 cp .env.example .env  # optional; with no keys everything runs in mock mode
 make seed           # reproducible simulated world (SEED_RANDOM)
 make dev            # http://localhost:8000
-make test           # 23 tests
+make test           # 63 tests
 make eval           # runs every planted scenario, writes eval/report.md
 make doctor         # KEY PRESENT/MISSING and live/mock per service (never prints values)
 make dev-ui         # optional: Vite dev server on :5173, proxies /api to :8000
@@ -62,6 +70,11 @@ deterministic planner, never from the model.
 | `backend/saathi/tools.py` | Typed mock tools |
 | `backend/saathi/agents/` | Manager routing and the five workflows |
 | `backend/saathi/privacy.py` | Preference store, consent, cohorts, deletion |
+| `backend/saathi/bills.py` | Upload rules, field checks, computed confidence, bill payment |
+| `backend/saathi/changequote.py` | Fees, fare differences and refunds from partner policy tables |
+| `backend/saathi/analytics.py` | Spend tools: summary, trend, compare, anomalies, forecast, budgets |
+| `backend/saathi/inventory.py` | Stock tools: movements, undo, low stock, dead stock, margins |
+| `backend/saathi/adapters/docai.py` | Sarvam Document AI job lifecycle, cache and mock reader |
 | `backend/saathi/adapters/` | Sarvam LLM/voice/translate, memory, Paytm PG, each with a mock |
 | `frontend/` | Svelte 5 + Vite + Tailwind CSS 4 UI with Lucide icons: Consumer, Merchant, Support desk, Impact, Scenarios |
 
@@ -75,9 +88,31 @@ deterministic planner, never from the model.
 - Invalid model output is rejected, not executed.
 - The audit log cannot be updated or deleted (database triggers).
 
+- A bill is paid only from fields the user confirmed. Confidence per field is computed from
+  the document text (1.0 printed and valid, 0.6 partial or failing a check, 0.3 not found),
+  never taken from the model.
+- A bill already paid is blocked; one far above the usual amount must be acknowledged; an
+  unknown biller goes to a person.
+- Text inside a document is data. An instruction hidden in a bill is ignored (tested).
+- Booking fees and refunds come from partner policy tables, never from the model. A changed
+  quote voids the approval, and a failed multi-item change is rolled back.
+- Every number in a spend answer comes from an analytics tool (tested against SQL).
+- Stock never goes negative; manual changes can be undone for 10 minutes.
+
+## Uploaded files
+
+- PDF, PNG, JPEG or ZIP only, checked by content, up to 10 MB and 10 PDF pages.
+- Text chunks and EXIF are stripped before a file is stored, and the stored copy is deleted
+  after 24 hours.
+- Account numbers are masked to the last 4 digits in the UI and in the audit log.
+- With a Sarvam key the file is sent to Sarvam Document AI to be read, and the review card
+  says so. In mock mode nothing leaves the machine and only the seeded samples can be read.
+
 ## Privacy design (reference: India's DPDP Act, 2023)
 
-- Two consent scopes: `personalisation` and `offers`. `offers` is opt-in and explained in
+- Spend insights have their own consent scope, on by default for the user's own view. Spend
+  data is never used in cohorts or shown to shops.
+- Two further consent scopes: `personalisation` and `offers`. `offers` is opt-in and explained in
   plain language. Turning it off takes effect on the next read.
 - Each preference records value, source (`stated` or `inferred`), confidence and time.
   Stated beats inferred. Inferred items are shown as guesses the user can correct.
@@ -107,3 +142,12 @@ Everything except the Sarvam calls (live only when a key is set and reachable). 
 5. **Consumer, user 1**: Inbox shows the offer with "Why am I seeing this?". Redeem, approve.
 6. **Scenarios**: run "B1 offer bridge" and "W2 collect dues" to simulate responses.
 7. **Impact**: bridge funnel, uplift vs holdout, opt-out rate, ₹ recovered, policy violations 0.
+8. **Consumer, user 1**: tap the paperclip, pick "Phone bill, number printed with spaces".
+   Tick the highlighted number, confirm, approve. Then try "Electricity bill that is already
+   paid" and "Broadband bill with an instruction hidden in the text".
+9. **Trips**: book `Mumbai se Pune 2026-12-15 1 raat`, open Trips, pick a new date and
+   Reschedule. Show Now / After / fee, approve.
+10. **Chat**: `How much did I spend on food last month?`, then `plan a budget for me`. Open
+    the Spend tab.
+11. **Merchant 6**: `Add 20 packets of Parle-G at ₹8, selling ₹10`, press Undo. Ask
+    `What is running low?`. Upload the supplier invoice with the paperclip and approve.

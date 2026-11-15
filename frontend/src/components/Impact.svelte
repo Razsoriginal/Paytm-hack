@@ -20,6 +20,7 @@
 	const partnerNames = {
 		sarvam_llm: 'Sarvam language model',
 		sarvam_speech: 'Sarvam voice and translation',
+		document_ai: 'Sarvam Document AI',
 		cognee: 'Cognee memory',
 		paytm_pg: 'Paytm payment gateway',
 	};
@@ -150,6 +151,18 @@
 				{#each [['Approvals given', pct(m.approval_rate_pct), ''], ['Handed to a person', pct(m.escalation_pct), ''], ['Rule violations', m.policy_violations.length, m.policy_violations.length ? 'text-stop' : 'text-go']] as [label, value, tone]}
 					<div class="rounded-2xl bg-ground p-3">
 						<p class="font-display text-2xl font-extrabold tabular-nums {tone}">{value}</p>
+						<p class="text-xs text-mute">{label}</p>
+					</div>
+				{/each}
+			</div>
+		</section>
+
+		<section class="card grid gap-3 lg:col-span-2">
+			<h2 class="title">Everyday jobs handled</h2>
+			<div class="grid grid-cols-2 gap-2 text-center sm:grid-cols-3 lg:grid-cols-6">
+				{#each [['Bills paid', m.features.bills_paid], ['Paid on bills', inr(m.features.bills_paid_inr)], ['Bills read without a correction', pct(m.features.extraction_auto_accept_pct)], ['Booking changes', m.features.booking_changes], ['Spend questions answered', m.features.spend_questions], ['Stock added', inr(m.features.stock_added_inr)]] as [label, value]}
+					<div class="rounded-2xl bg-ground p-3">
+						<p class="font-display text-2xl font-extrabold tabular-nums">{value}</p>
 						<p class="text-xs text-mute">{label}</p>
 					</div>
 				{/each}

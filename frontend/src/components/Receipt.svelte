@@ -1,5 +1,8 @@
 <script>
-	import { BookOpenText, Check, Gift, Landmark, Plane, Smartphone, Tag, X } from '@lucide/svelte';
+	import {
+		BookOpenText, CalendarClock, Check, Gift, Landmark, PackagePlus, Plane, ReceiptText, Smartphone,
+		Tag, X,
+	} from '@lucide/svelte';
 	import { api, inr } from '../lib/api.js';
 
 	let { approval, alt = null, onresult = () => {} } = $props();
@@ -10,7 +13,11 @@
 		redeem: Gift,
 		bank_fix: Landmark,
 		payment: Smartphone,
+		bill: ReceiptText,
+		change: CalendarClock,
+		stock_in: PackagePlus,
 	};
+	const masked = (n) => '•'.repeat(Math.max(String(n).length - 4, 0)) + String(n).slice(-4);
 	let busy = $state(false);
 	let stamp = $state(approval.status === 'pending' ? '' : approval.status);
 	const p = $derived(approval.payload);
@@ -79,8 +86,42 @@
 			{@render total('Money to resend', inr(p.amount))}
 		{:else if approval.kind === 'payment'}
 			{@render total('From your wallet', inr(p.amount))}
+		{:else if approval.kind === 'bill'}
+			{@render row('Biller', p.biller)}
+			{@render row('Account', masked(p.consumer_number))}
+			{#if p.bill_period}{@render row('Bill period', p.bill_period)}{/if}
+			{#if p.due_date}{@render row('Due date', p.due_date)}{/if}
+			{@render total('From your wallet', inr(p.amount_due))}
+		{:else if approval.kind === 'stock_in'}
+			<div class="max-h-44 overflow-auto pr-1">
+				{#each p.items as it}
+					{@render row(it.name, inr(it.qty * it.rate), `${it.qty} × ₹${it.rate}`)}
+				{/each}
+			</div>
+			{@render total('Stock value', inr(p.total))}
+		{:else if approval.kind === 'change'}
+			{#each p.lines as l}
+				<div class="border-b border-dashed border-face/25 py-1.5">
+					<p class="text-xs text-mute">Now: {l.now}</p>
+					<p class="font-semibold">After: {l.after}</p>
+				</div>
+			{/each}
+			{#if p.action === 'cancel'}
+				{@render row('Cancellation fee', inr(p.fee_total))}
+			{:else}
+				{@render row('Change fee', inr(p.fee_total))}
+				{@render row('Fare difference', inr(p.fare_diff))}
+			{/if}
+			{#if p.refund_total}
+				{@render total('Refund', inr(p.refund_total))}
+			{:else}
+				{@render total('You pay', inr(p.pay_extra))}
+			{/if}
 		{/if}
 	</dl>
+	{#if approval.kind === 'change' && p.refund_total}
+		<p class="text-xs text-mute">{p.refund_when}. Fees come from each partner's refund policy.</p>
+	{/if}
 
 	{#if approval.kind === 'trip'}
 		<p class="text-xs text-mute">Why this plan: {p.why}.</p>

@@ -261,9 +261,11 @@ def confirm(s: Session, user_id: int, upload_id: int, values: dict, confirmed: l
 	case = s.get(Case, u.fields["case_id"])
 	scored = {f["name"]: f for f in u.fields["scored"]}
 	final = {k: str(values.get(k, scored[k]["value"]) or "").strip() for k in LABELS}
+	# Numbers are often printed in groups ("98200 12345"); once confirmed, drop the spacing.
+	final["consumer_number"] = re.sub(r"[\s-]", "", final["consumer_number"])
 	# A field must be confirmed if it was not read with high confidence or the user changed it.
 	need = [k for k in KEY_FIELDS if scored[k]["state"] != "ok" and k not in confirmed
-		and final[k] == scored[k]["value"]]
+		and str(values.get(k, scored[k]["value"]) or "").strip() == scored[k]["value"]]
 	if need:
 		return {"state": "needs_confirmation", "fields": need,
 			"reply": "Please check and tick: " + ", ".join(LABELS[k].lower() for k in need) + "."}
