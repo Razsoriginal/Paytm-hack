@@ -1,6 +1,7 @@
 """HTTP API and the single-page UI."""
 import asyncio
 import json
+from datetime import timedelta
 from pathlib import Path
 from statistics import median
 
@@ -11,19 +12,21 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, privacy, seed
-from .adapters.llm import llm
+from . import bills, db, privacy, seed, tools
+from .adapters.docai import docai
+from .adapters.llm import SPEND_CATEGORIES, llm
 from .adapters.memory import memory
 from .adapters.paytm_pg import pg
 from .adapters.speech import speech
-from .agents import flows, manager
+from .agents import flows, manage, manager, stock
 from .config import settings
 from .db import (
 	Action, AgentRun, Approval, AuditLog, Booking, BookingItem, Case, Escalation, ImpactEvent,
 	KhataEntry, Merchant, Notification, Offer, Refund, User, Wallet, now,
 )
 from .policy import AUTONOMY, has_consent
-from .services import inbox, resolve_escalation, run_log
+from .policy import ProposedAction as PA
+from .services import execute, inbox, open_case, resolve_escalation, run_log
 
 app = FastAPI(title="Saathi (simulated data)")
 app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS, allow_methods=["*"],
@@ -72,6 +75,43 @@ class Reply(BaseModel):
 	reply: str
 
 
+class BillConfirm(BaseModel):
+	values: dict = {}
+	confirmed: list[str] = []
+	acknowledge_anomaly: bool = False
+
+
+class ChangeIn(BaseModel):
+	action: str  # reschedule | cancel | concern
+	new_date: str | None = None
+	item_id: int | None = None
+	text: str = ""
+
+
+class CategoryIn(BaseModel):
+	merchant_name: str
+	category: str
+
+
+class StockConfirm(BaseModel):
+	items: list[dict]
+
+
+class UndoIn(BaseModel):
+	movement_id: int | None = None
+
+
+async def _file(sample: str, file: UploadFile | None) -> tuple[bytes, str]:
+	"""An uploaded file, or one of the seeded samples by name."""
+	if file is not None:
+		return await file.read(), file.filename or "upload"
+	folder = (settings.DATA_DIR / "samples").resolve()
+	path = (folder / sample).resolve()
+	if not sample or path.parent != folder or not path.is_file():
+		raise HTTPException(400, "Choose a file to upload.")
+	return path.read_bytes(), path.name
+
+
 @app.get("/")
 def index():
 	if (DIST / "index.html").is_file():
@@ -92,8 +132,15 @@ def bootstrap():
 
 @app.get("/api/partners")
 def partners():
-	return {"sarvam_llm": llm.health(), "sarvam_speech": speech.health(), "cognee": memory.health(),
-		"paytm_pg": pg.health()}
+	return {"sarvam_llm": llm.health(), "sarvam_speech": speech.health(),
+		"document_ai": docai.health(), "cognee": memory.health(), "paytm_pg": pg.health()}
+
+
+@app.get("/api/samples")
+def samples(purpose: str = ""):
+	f = settings.DATA_DIR / "samples" / "manifest.json"
+	rows_ = json.loads(f.read_text()) if f.is_file() else []
+	return [r for r in rows_ if not purpose or r["purpose"] == purpose]
 
 
 @app.post("/api/chat")
@@ -144,6 +191,9 @@ def consumer(uid: int):
 				"items": rows(s.query(BookingItem).filter_by(booking_id=b.id))})
 		return {"user": s.get(User, uid).as_dict(), "wallet": s.get(Wallet, uid).balance,
 			"bookings": bookings, "consents": privacy.consent_state(s, uid),
+			"tickets": [tools.call(s, "get_ticket_status", {"ticket_id": c.id}) for c in
+				s.query(Case).filter_by(actor_type="consumer", actor_id=uid, workflow="ticket")
+				.order_by(Case.id.desc())],
 			"consent_text": privacy.SCOPES,
 			"preferences": rows(privacy.preferences(s, uid, for_use=False)),
 			"refunds": rows(s.query(Refund).filter_by(user_id=uid)),
@@ -195,6 +245,103 @@ def redeem(uid: int, r: RedeemIn):
 		res = flows.redeem_request(s, uid, r.offer_id, r.bill_amount)
 		s.commit()
 		return res
+
+
+@app.post("/api/consumer/{uid}/bills")
+async def bill_upload(uid: int, sample: str = Form(""), file: UploadFile | None = File(None)):
+	data, name = await _file(sample, file)
+	with S() as s:
+		try:
+			return bills.review(s, uid, data, name)
+		except bills.UploadRejected as e:
+			raise HTTPException(400, str(e))
+
+
+@app.post("/api/consumer/{uid}/bills/{upload_id}/confirm")
+def bill_confirm(uid: int, upload_id: int, b: BillConfirm):
+	with S() as s:
+		return bills.confirm(s, uid, upload_id, b.values, b.confirmed, b.acknowledge_anomaly)
+
+
+@app.post("/api/consumer/{uid}/bookings/{bid}/change")
+def booking_change(uid: int, bid: int, c: ChangeIn):
+	with S() as s:
+		user = s.get(User, uid)
+		case = open_case(s, "consumer", uid, "C4", f"{c.action} booking {bid}")
+		if c.action == "concern":
+			res = manage.concern(s, user, c.text or "Concern about this booking", case, bid)
+		else:
+			res = manage.request_change(s, user, case, c.action, bid, c.new_date, c.item_id)
+		s.commit()
+		return res
+
+
+@app.get("/api/consumer/{uid}/spend")
+def spend(uid: int):
+	with S() as s:
+		if not privacy.consent_state(s, uid)["spend_insights"]:
+			return {"enabled": False}
+		call = lambda name, **a: tools.call(s, name, {"user_id": uid, **a})  # noqa: E731
+		recent = (s.query(db.Transaction).filter(db.Transaction.user_id == uid,
+			db.Transaction.kind.in_(("payment", "bill", "recharge", "booking")),
+			db.Transaction.status == "success", db.Transaction.order_state == "fulfilled")
+			.order_by(db.Transaction.created_at.desc()).limit(15))
+		return {"enabled": True, "summary": call("spend_summary"), "trend": call("spend_trend"),
+			"budgets": call("budget_status"), "forecast": call("forecast_month_end"),
+			"categories": SPEND_CATEGORIES,
+			"goals": rows(s.query(db.Goal).filter_by(user_id=uid)),
+			"recent": [{"merchant": t.merchant_name, "amount": round(t.amount),
+				"category": t.category, "date": t.created_at.date().isoformat()} for t in recent]}
+
+
+@app.post("/api/consumer/{uid}/category")
+def set_category(uid: int, c: CategoryIn):
+	with S() as s:
+		r = execute(s, PA(tool="set_category", actor_type="consumer", actor_id=uid, agent="Insights",
+			args={"user_id": uid, "merchant_name": c.merchant_name, "category": c.category},
+			idempotency_key=f"cat:{uid}:{c.merchant_name}:{c.category}:{now().timestamp()}",
+			why="User corrected a category"))
+		if not r.ok:
+			raise HTTPException(400, r.error)
+		return r.result
+
+
+@app.get("/api/merchant/{mid}/stock")
+def stock_view(mid: int):
+	with S() as s:
+		m = s.get(Merchant, mid)
+		return {"tier": m.tier, "can_edit": m.tier != "T1",
+			"products": tools.call(s, "list_products", {"merchant_id": mid})["products"],
+			"low": tools.call(s, "get_low_stock", {"merchant_id": mid}),
+			"dead": tools.call(s, "get_dead_stock", {"merchant_id": mid})["products"],
+			"undo_minutes": settings.STOCK_UNDO_MINUTES}
+
+
+@app.post("/api/merchant/{mid}/stock/undo")
+def stock_undo(mid: int, u: UndoIn):
+	with S() as s:
+		r = execute(s, PA(tool="undo_stock_change", actor_type="merchant", actor_id=mid,
+			agent="Stock", args={"merchant_id": mid, "movement_id": u.movement_id},
+			idempotency_key=f"undo:{mid}:{u.movement_id}:{now().timestamp()}", why="Undo pressed"))
+		if not r.ok:
+			raise HTTPException(400, r.error.replace("_", " "))
+		return r.result
+
+
+@app.post("/api/merchant/{mid}/stock-upload")
+async def stock_upload(mid: int, sample: str = Form(""), file: UploadFile | None = File(None)):
+	data, name = await _file(sample, file)
+	with S() as s:
+		try:
+			return stock.review_upload(s, s.get(Merchant, mid), data, name)
+		except bills.UploadRejected as e:
+			raise HTTPException(400, str(e))
+
+
+@app.post("/api/merchant/{mid}/stock-upload/{upload_id}/confirm")
+def stock_confirm(mid: int, upload_id: int, c: StockConfirm):
+	with S() as s:
+		return stock.confirm_upload(s, s.get(Merchant, mid), upload_id, c.items)
 
 
 @app.get("/api/merchant/{mid}")
@@ -310,6 +457,14 @@ def metrics(s) -> dict:
 			"khata_holdout_inr": amt("khata_recovered", "holdout"),
 			"reminders_sent": sum(e.meta.get("count", 0) for e in ev
 				if e.kind == "khata_reminders_sent")},
+		"features": {"bills_paid": n("bill_paid"), "bills_paid_inr": amt("bill_paid"),
+			"bills_read": n("bill_extracted"),
+			"extraction_auto_accept_pct": pct(sum(1 for e in ev if e.kind == "bill_extracted"
+				and e.meta.get("auto")), n("bill_extracted")),
+			"booking_changes": n("booking_change"), "spend_questions": n("spend_question"),
+			"low_stock_flagged": sum(e.meta.get("count", 0) for e in ev
+				if e.kind == "low_stock_flagged"),
+			"stock_added_inr": amt("stock_added")},
 		"bridge": offers[-1] if offers else None, "offers": offers,
 		"approval_rate_pct": pct(n("approval_approved"), appr),
 		"escalation_pct": pct(n("case_escalated"), len(closed)),
@@ -360,6 +515,55 @@ def _w2(s, log):
 		"saathi": json.dumps(flows.simulate_khata_payments(s, r["case_id"]))})
 
 
+def _sample(name: str) -> bytes:
+	return (settings.DATA_DIR / "samples" / name).read_bytes()
+
+
+def _bill(name: str, ack: bool = False, fix: dict | None = None):
+	"""Upload a seeded bill as the demo user, confirm what needs confirming, approve."""
+	def run(s, log):
+		uid = seed.U_BILLS
+		r = bills.review(s, uid, _sample(name), name)
+		log.append({"who": f"consumer:{uid}", "said": f"uploads {name}", "saathi": r["reply"]})
+		if r["state"] not in ("clean", "review"):
+			return
+		ticks = [f["name"] for f in r["fields"] if f["state"] != "ok"]
+		c = bills.confirm(s, uid, r["upload_id"], fix or {}, ticks, ack)
+		log.append({"who": f"consumer:{uid}", "said": "confirms the details", "saathi": c["reply"]})
+		if c.get("approval"):
+			p = manager.approve(s, c["approval"]["id"], True, "scenario")
+			log.append({"who": f"consumer:{uid}", "said": "approve", "saathi": p["reply"]})
+	return run
+
+
+def _far(days: int) -> str:
+	return (now() + timedelta(days=days)).date().isoformat()
+
+
+def _c4(uid: int, route: str, then: str):
+	def run(s, log):
+		_say(s, "consumer", uid, f"{route} {_far(25)} 1 raat", True, log)
+		_say(s, "consumer", uid, then.format(date=_far(32)), True, log)
+	return run
+
+
+def _script(actor: str, actor_id: int, lines: list[str]):
+	def run(s, log):
+		for line in lines:
+			_say(s, actor, actor_id, line, True, log)
+	return run
+
+
+def _stock_upload(s, log):
+	m = s.get(Merchant, seed.M_INVENTORY)
+	r = stock.review_upload(s, m, _sample("20-supplier-invoice.pdf"))
+	log.append({"who": f"merchant:{m.id}", "said": "uploads a supplier invoice", "saathi": r["reply"]})
+	c = stock.confirm_upload(s, m, r["upload_id"], r["items"])
+	log.append({"who": f"merchant:{m.id}", "said": "confirms the lines", "saathi": c["reply"]})
+	p = manager.approve(s, c["approval"]["id"], True, "scenario")
+	log.append({"who": f"merchant:{m.id}", "said": "approve", "saathi": p["reply"]})
+
+
 SCENARIOS = {
 	"C1 happy path": lambda s, log: _say(s, "consumer", 14, "Mumbai se Pune kal 1 raat", True, log),
 	"C1 sold out mid-checkout": lambda s, log: _say(s, "consumer", 1, "Mumbai se Goa kal 2 raat",
@@ -382,6 +586,28 @@ SCENARIOS = {
 	"W1 soundbox offline": _w1(seed.M_SOUNDBOX),
 	"W1 suspected fraud (escalates)": _w1(seed.M_FRAUD),
 	"W2 collect dues": _w2,
+	"C3 clear electricity bill": _bill("01-electricity.pdf"),
+	"C3 photo of a water bill": _bill("04-water-photo.png"),
+	"C3 number needs confirming": _bill("05-phone-spaced-number.pdf",
+		fix={"consumer_number": "9820012345"}),
+	"C3 Hinglish layout": _bill("07-electricity-hinglish.pdf"),
+	"C3 blurry photo": _bill("08-blurry-photo.png"),
+	"C3 duplicate bill (blocked)": _bill("09-duplicate.pdf"),
+	"C3 double the usual amount": _bill("10-anomaly.pdf", ack=True),
+	"C3 unknown biller (escalates)": _bill("11-unknown-biller.pdf"),
+	"C3 past due date": _bill("12-past-due.pdf"),
+	"C3 instruction hidden in the bill": _bill("13-injection.pdf"),
+	"C4 reschedule a trip": _c4(14, "Mumbai se Pune", "reschedule to {date}"),
+	"C4 cancel a trip": _c4(19, "Mumbai se Pune", "cancel my booking"),
+	"C4 change fails and rolls back": _c4(12, "Delhi se Jaipur train se", "reschedule to {date}"),
+	"C4 charged twice": _script("consumer", seed.U_DOUBLE_CHARGE, ["I was charged twice"]),
+	"C5 spend questions": _script("consumer", seed.U_BILLS, [
+		"How much did I spend on food last month?", "Compare this month to last",
+		"Any unusual spends last month?", "plan a budget for me", "Will I overshoot my budget?"]),
+	"M1 stock by chat": _script("merchant", seed.M_INVENTORY, [
+		"Add 20 packets of Parle-G at ₹8, selling ₹10", "Mark 5 as damaged", "undo",
+		"What is running low?"]),
+	"M1 supplier invoice upload": _stock_upload,
 }
 
 
@@ -425,13 +651,22 @@ def proactive_scan() -> int:
 	return found
 
 
+def _purge() -> None:
+	with S() as s:
+		bills.purge_uploads(s)
+		s.commit()
+
+
 @app.on_event("startup")
 def startup():
 	db.init_db()
 	with S() as s:
 		if not s.query(User).first():
 			seed.seed(s)
+		elif not (settings.DATA_DIR / "samples" / "manifest.json").is_file():
+			seed.write_samples()
 	sch = BackgroundScheduler(daemon=True)
 	sch.add_job(proactive_scan, "interval", seconds=60, next_run_time=None)
+	sch.add_job(_purge, "interval", minutes=30)
 	sch.start()
 	proactive_scan()

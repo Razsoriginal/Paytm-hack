@@ -83,7 +83,7 @@ def answer(s: Session, user: User, intent, case: Case) -> dict:
 		tool_name, r = "detect_anomalies", call("detect_anomalies", period=period or "last_month")
 		if r["unusual"]:
 			x = r["unusual"][0]
-			reply = (f"{len(r['unusual'])} unusual spend {r['period']}. The largest is ₹{x['amount']} "
+			reply = (f"{r['count']} unusual spend {r['period']}. The largest is ₹{x['amount']} "
 				f"at {x['merchant']}; your usual {x['category']} spend is about ₹{x['usual']}.")
 			table = _table(r["unusual"], [("date", "Date"), ("merchant", "Where"),
 				("amount", "Amount ₹"), ("usual", "Usual ₹")])
@@ -100,7 +100,7 @@ def answer(s: Session, user: User, intent, case: Case) -> dict:
 			reply += " Set a budget and I can tell you whether you will overshoot it."
 	elif action == "recurring":
 		tool_name, r = "detect_recurring", call("detect_recurring")
-		reply = (f"I found {len(r['recurring'])} regular payments." if r["recurring"]
+		reply = (f"I found {r['count']} regular payments." if r["recurring"]
 			else "I found no regular payments.")
 		table = _table(r["recurring"], [("merchant", "Payee"), ("amount", "Amount ₹"),
 			("months", "Months seen")])

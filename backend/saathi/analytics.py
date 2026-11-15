@@ -100,15 +100,17 @@ def compare_periods(s, user_id: int, a: str = "this_month", b: str = "last_month
 	"""Compares like with like: when `a` is the month in progress, `b` is cut at the same day."""
 	sa, ea, la = period_range(a)
 	sb, eb, lb = period_range(b)
+	day = None
 	if a in (None, "", "this_month"):
-		eb = min(eb, sb + (ea - sa))
-		lb += f" up to day {(ea - sa).days + 1}"
+		eb, day = min(eb, sb + (ea - sa)), (ea - sa).days + 1
+		lb += f" up to day {day}"
 	ra, rb = _rows(s, user_id, sa, ea), _rows(s, user_id, sb, eb)
 	ta, tb = round(sum(t.amount for t in ra)), round(sum(t.amount for t in rb))
 	ca = {r["category"]: r["total"] for r in _by_category(ra)}
 	cb = {r["category"]: r["total"] for r in _by_category(rb)}
 	cats = sorted(set(ca) | set(cb), key=lambda c: -abs(ca.get(c, 0) - cb.get(c, 0)))
-	return {"a": {"period": la, "total": ta}, "b": {"period": lb, "total": tb}, "change": ta - tb,
+	return {"a": {"period": la, "total": ta}, "b": {"period": lb, "total": tb, "up_to_day": day},
+		"change": ta - tb,
 		"change_pct": round(100 * (ta - tb) / tb) if tb else None,
 		"by_category": [{"category": c, "a": ca.get(c, 0), "b": cb.get(c, 0),
 			"change": ca.get(c, 0) - cb.get(c, 0)} for c in cats]}
@@ -137,7 +139,7 @@ def detect_anomalies(s, user_id: int, period: str | None = None) -> dict:
 			out.append({"merchant": t.merchant_name, "category": t.category,
 				"amount": round(t.amount), "usual": round(median(past)),
 				"date": t.created_at.date().isoformat()})
-	return {"period": label, "unusual": sorted(out, key=lambda r: -r["amount"])}
+	return {"period": label, "count": len(out), "unusual": sorted(out, key=lambda r: -r["amount"])}
 
 
 @tool()
@@ -154,7 +156,7 @@ def detect_recurring(s, user_id: int) -> dict:
 		if len(firsts) >= 3 and max(firsts) <= 1.1 * min(firsts):
 			out.append({"merchant": name, "amount": round(sum(firsts) / len(firsts)),
 				"months": len(firsts)})
-	return {"recurring": sorted(out, key=lambda r: -r["amount"])}
+	return {"count": len(out), "recurring": sorted(out, key=lambda r: -r["amount"])}
 
 
 @tool()
