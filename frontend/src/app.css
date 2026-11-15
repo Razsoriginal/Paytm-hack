@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-sans:
+		'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-display:
+		'Bricolage Grotesque Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, sans-serif;
+	--color-ink: #1c2145;
+	--color-mute: #666d8c;
+	--color-ground: #f2f4fc;
+	--color-line: #e2e6f3;
+	--color-sun: #ffb020;
+	--color-sun-soft: #fff2d1;
+	--color-sun-deep: #7a4f00;
+	--color-go: #0c8f61;
+	--color-go-soft: #ddf6ea;
+	--color-stop: #d0362e;
+	--color-stop-soft: #fde7e5;
+}
+
+/* The accent follows the face being shown: consumer, merchant or the back office. */
+@theme inline {
+	--color-face: var(--face);
+	--color-face-soft: var(--face-soft);
+	--color-face-deep: var(--face-deep);
+}
+
+:root {
+	--face: #3d50f2;
+	--face-soft: #e9ecff;
+	--face-deep: #2b39b5;
+}
+[data-face='merchant'] {
+	--face: #b8273f;
+	--face-soft: #fdeaed;
+	--face-deep: #8a1b2e;
+}
+[data-face='ops'] {
+	--face: #0b7f77;
+	--face-soft: #dcf4f1;
+	--face-deep: #075e58;
+}
+
+@layer base {
+	body {
+		@apply bg-ground font-sans text-ink antialiased;
+	}
+	h1,
+	h2 {
+		@apply font-display;
+	}
+	button:not(:disabled),
+	summary {
+		cursor: pointer;
+	}
+	:focus-visible {
+		outline: 3px solid var(--color-sun);
+		outline-offset: 2px;
+	}
+}
+
+@layer components {
+	.btn {
+		@apply inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-face hover:text-face disabled:opacity-50 disabled:hover:border-line disabled:hover:text-ink;
+	}
+	.btn-solid {
+		@apply border-face bg-face text-white hover:bg-face-deep hover:text-white disabled:hover:bg-face disabled:hover:text-white;
+	}
+	.btn-danger {
+		@apply text-stop hover:border-stop hover:text-stop;
+	}
+	.field {
+		@apply min-w-0 rounded-xl border border-line bg-white px-3 py-2 text-sm placeholder:text-mute;
+	}
+	.card {
+		@apply rounded-3xl border border-line bg-white p-5 shadow-[0_10px_30px_-22px_rgba(28,33,69,0.5)] sm:p-6;
+	}
+	.chip {
+		@apply inline-flex items-center gap-1 rounded-full bg-face-soft px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-face-deep;
+	}
+	.chip-go {
+		@apply bg-go-soft text-go;
+	}
+	.chip-stop {
+		@apply bg-stop-soft text-stop;
+	}
+	.chip-wait {
+		@apply bg-sun-soft text-sun-deep;
+	}
+	.title {
+		@apply text-xl leading-tight font-bold tracking-tight;
+	}
+	.hint {
+		@apply text-sm text-mute;
+	}
+	.icon-dot {
+		@apply grid size-9 shrink-0 place-items-center rounded-2xl bg-face-soft text-face;
+	}
+	.phone {
+		@apply flex h-[min(760px,calc(100dvh-8.5rem))] min-h-[30rem] max-lg:h-[calc(100dvh-10.75rem)] flex-col overflow-hidden rounded-[2.2rem] border border-line bg-white shadow-[0_30px_60px_-35px_rgba(28,33,69,0.55)];
+	}
+	.tabbar {
+		@apply grid grid-flow-col auto-cols-fr border-t border-line bg-white px-2 pt-1.5 pb-2;
+	}
+	.tabbar button {
+		@apply flex flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[0.7rem] font-semibold text-mute;
+	}
+	.tabbar button[aria-selected='true'] {
+		@apply bg-face-soft text-face;
+	}
+	.ledger > div {
+		@apply flex items-center justify-between gap-4 border-t border-line py-2.5 text-sm first:border-t-0;
+	}
+	.ledger dd {
+		@apply font-bold whitespace-nowrap tabular-nums;
+	}
+	/* A printed slip: flat top edge, torn bottom edge. */
+	.receipt {
+		--tooth: 10px;
+		@apply relative grid gap-3 rounded-t-2xl bg-face-soft px-4 pt-4 pb-6;
+		mask:
+			conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--tooth)
+				51% repeat-x,
+			linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth) / 2) no-repeat;
+	}
+	.stamp {
+		@apply justify-self-end rounded-lg border-[3px] border-go px-3 font-display text-lg font-extrabold text-go;
+		rotate: -6deg;
+		animation: press 0.25s ease-out;
+	}
+	.arrive {
+		animation: arrive 1.8s ease-out;
+	}
+}
+
+@keyframes press {
+	from {
+		scale: 1.6;
+		opacity: 0;
+	}
+}
+@keyframes arrive {
+	from {
+		background: var(--color-sun-soft);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.stamp,
+	.arrive {
+		animation: none;
+	}
+}
