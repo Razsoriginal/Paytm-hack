@@ -1,7 +1,7 @@
 <script>
 	import { FileText, Handshake, Mic, Paperclip, SendHorizontal, Undo2, Volume2, X } from '@lucide/svelte';
 	import { tick } from 'svelte';
-	import { api, listen, say, upload } from '../lib/api.js';
+	import { api, listen, say, upload, url } from '../lib/api.js';
 	import { app } from '../lib/state.svelte.js';
 	import BillReview from './BillReview.svelte';
 	import Receipt from './Receipt.svelte';
@@ -49,7 +49,7 @@
 				f.append('actor_id', id);
 				f.append('language', lang);
 				f.append('hint', t);
-				onReply(await (await fetch('/api/voice', { method: 'POST', body: f })).json());
+				onReply(await (await fetch(url('/voice'), { method: 'POST', body: f })).json());
 			} else {
 				onReply(await api('/chat', 'POST', { actor_type: type, actor_id: id, text: t }));
 			}

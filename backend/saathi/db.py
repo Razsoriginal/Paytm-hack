@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
 	JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint,
-	create_engine, event,
+	create_engine, event, inspect as inspect_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -529,6 +529,23 @@ def init_db(eng=None, drop: bool = False) -> None:
 	with eng.begin() as conn:
 		for stmt in AUDIT_TRIGGERS:
 			conn.exec_driver_sql(stmt)
+
+
+def missing_schema(eng=None) -> list[str]:
+	"""Tables and columns the models expect but this file does not have yet.
+
+	A database created by an older checkout survives a branch switch, and
+	create_all cannot add columns to a table that already exists.
+	"""
+	insp = inspect_engine(eng or engine)
+	absent: list[str] = []
+	for table in Base.metadata.sorted_tables:
+		if not insp.has_table(table.name):
+			absent.append(table.name)
+			continue
+		have = {c["name"] for c in insp.get_columns(table.name)}
+		absent += [f"{table.name}.{c.name}" for c in table.columns if c.name not in have]
+	return absent
 
 
 def get_session() -> Session:

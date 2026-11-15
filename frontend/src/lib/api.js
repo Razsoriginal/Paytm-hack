@@ -1,5 +1,10 @@
+/** The API origin when the UI is hosted apart from the backend, empty when served together. */
+export const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
+
+export const url = (path) => `${API_BASE}/api${path}`;
+
 export async function api(path, method = 'GET', body) {
-	const r = await fetch(`/api${path}`, {
+	const r = await fetch(url(path), {
 		method,
 		headers: body ? { 'Content-Type': 'application/json' } : {},
 		body: body ? JSON.stringify(body) : undefined,
@@ -17,7 +22,7 @@ export const pct = (n) => (n == null ? '–' : `${Math.round(n * 10) / 10}%`);
 /** Sarvam voice when it is live, the browser's own voice otherwise. */
 export async function say(text, lang) {
 	try {
-		const r = await fetch(`/api/tts?text=${encodeURIComponent(text)}&language=${lang || ''}`);
+		const r = await fetch(url(`/tts?text=${encodeURIComponent(text)}&language=${lang || ''}`));
 		if (r.headers.get('X-Saathi-Mode') === 'live') {
 			await new Audio(URL.createObjectURL(await r.blob())).play();
 			return;
@@ -43,7 +48,7 @@ export async function upload(path, { file, sample }) {
 	const form = new FormData();
 	if (file) form.append('file', file);
 	else form.append('sample', sample);
-	const r = await fetch(`/api${path}`, { method: 'POST', body: form });
+	const r = await fetch(url(path), { method: 'POST', body: form });
 	if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
 	return r.json();
 }

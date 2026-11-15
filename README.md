@@ -42,6 +42,37 @@ Every `make` target runs inside `.venv`, which is created on first use. To use i
 `source .venv/bin/activate` (Windows: `.venv\Scripts\activate`, and run the commands from the
 Makefile directly, since its paths assume macOS or Linux).
 
+## Deploy
+
+The UI is static and goes on any CDN. The API keeps SQLite, uploads and the TTS cache on
+disk and runs a 60-second scan loop, so it needs a long-lived process with a volume —
+serverless functions cannot host it.
+
+**API on Render** (`render.yaml`, `Dockerfile`)
+
+1. New > Blueprint, pick this repo. `plan: starter` is what allows the persistent disk at
+   `/var/data`; the free plan cannot attach one.
+2. Set `SARVAM_API_KEY` and `CORS_ORIGINS=https://<your-app>.vercel.app` in the dashboard.
+3. An empty database seeds itself on first boot, so no `make seed` is needed.
+
+On the free plan, drop the `disk:` block and set `DATA_DIR=/tmp/data` with
+`DATABASE_URL=sqlite:////tmp/data/saathi.db`. Everything still works, but the simulated
+world reseeds whenever the service restarts.
+
+**UI on Vercel** (`vercel.json`)
+
+1. Import the repo, no CLI needed.
+2. Set **Root Directory** to `frontend` and **Framework Preset** to `Vite`. The repo root has
+   no `package.json`, so the preset has nothing to build until the root directory is set.
+   Vercel then fills in `npm run build` and `dist` by itself.
+3. Set `VITE_API_BASE=https://<your-service>.onrender.com`. It is read at build time, so
+   redeploy after changing it.
+4. Leave `VITE_API_BASE` unset to keep the UI calling `/api` on its own origin, which is what
+   `make dev` and the Docker image do.
+
+Leaving the Root Directory at the repo root also works if you set Vite as the preset: the
+root `vercel.json` runs the install and build inside `frontend/` and publishes `frontend/dist`.
+
 ## Architecture
 
 ```

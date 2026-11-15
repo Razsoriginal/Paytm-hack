@@ -30,7 +30,7 @@ from .services import execute, inbox, open_case, resolve_escalation, run_log
 
 app = FastAPI(title="Saathi (simulated data)")
 app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS, allow_methods=["*"],
-	allow_headers=["*"])
+	allow_headers=["*"], expose_headers=["X-Saathi-Mode"])
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if (DIST / "assets").is_dir():
 	app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
@@ -660,6 +660,12 @@ def _purge() -> None:
 @app.on_event("startup")
 def startup():
 	db.init_db()
+	stale = db.missing_schema()
+	if stale:
+		# A database from an older checkout cannot be migrated by create_all, and every
+		# table here is simulated, so rebuild it from the seed instead of failing later.
+		print(f"Saathi: rebuilding stale database (missing {', '.join(stale[:5])})")
+		db.init_db(drop=True)
 	with S() as s:
 		if not s.query(User).first():
 			seed.seed(s)

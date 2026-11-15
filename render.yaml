@@ -1,0 +1,26 @@
+# Render blueprint for the Saathi API. Deploy with: New > Blueprint > this repo.
+services:
+  - type: web
+    name: saathi-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/bootstrap
+    disk:
+      name: saathi-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: DATABASE_URL
+        value: sqlite:////var/data/saathi.db
+      - key: PYTHONPATH
+        value: /app/backend
+      - key: PAYTM_ENV
+        value: mock
+      # Set these in the Render dashboard after the first deploy.
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

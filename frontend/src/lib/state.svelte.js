@@ -1,4 +1,4 @@
-import { api } from './api.js';
+import { api, url } from './api.js';
 
 export const app = $state({
 	role: 'consumer',
@@ -25,7 +25,7 @@ export async function connectRuns() {
 	const past = await api('/runs?limit=60');
 	app.runs = past;
 	app.fresh = past.at(-1)?.id ?? 0;
-	source = new EventSource(`/api/runs/stream?after=${app.fresh}`);
+	source = new EventSource(url(`/runs/stream?after=${app.fresh}`));
 	source.onmessage = (e) => {
 		const run = JSON.parse(e.data);
 		if (!app.runs.some((r) => r.id === run.id)) app.runs.push(run);
