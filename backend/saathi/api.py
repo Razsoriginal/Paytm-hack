@@ -16,7 +16,7 @@ from .adapters.llm import llm
 from .adapters.memory import memory
 from .adapters.paytm_pg import pg
 from .adapters.speech import speech
-from .agents import flows, manager
+from .agents import flows, manager, manage
 from .config import settings
 from .db import (
 	Action, AgentRun, Approval, AuditLog, Booking, BookingItem, Case, Escalation, ImpactEvent,
@@ -70,6 +70,27 @@ class RedeemIn(BaseModel):
 
 class Reply(BaseModel):
 	reply: str
+
+
+class BookingChangeIn(BaseModel):
+	action: str
+	new_date: str | None = None
+	item_id: int | None = None
+
+
+@app.post("/api/consumer/{uid}/bookings/{booking_id}/manage")
+def manage_booking(uid: int, booking_id: int, request: BookingChangeIn):
+	if request.action not in ("status", "cancel", "reschedule"):
+		raise HTTPException(400, "Unsupported booking action")
+	with S() as s:
+		user = s.get(User, uid)
+		if not user:
+			raise HTTPException(404, "User not found")
+		case = manager.open_case(s, "consumer", uid, "C4", "Manage booking")
+		result = manage.request_change(s, user, case, request.action, booking_id,
+			request.new_date, request.item_id)
+		s.commit()
+		return result
 
 
 @app.get("/")

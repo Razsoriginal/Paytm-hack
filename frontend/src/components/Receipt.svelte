@@ -79,6 +79,14 @@
 			{@render total('Money to resend', inr(p.amount))}
 		{:else if approval.kind === 'payment'}
 			{@render total('From your wallet', inr(p.amount))}
+		{:else if approval.kind === 'change'}
+			{#each p.lines as line}
+				<div class="border-b border-dashed border-face/25 py-2"><dt>Now: {line.now}</dt><dd>After: {line.after}</dd></div>
+			{/each}
+			{@render row('Fees', inr(p.fee_total))}
+			{@render row('Fare difference', inr(p.fare_diff))}
+			{@render row('Refund', inr(p.refund_total), p.refund_when)}
+			{@render total('Extra payment', inr(p.pay_extra))}
 		{/if}
 	</dl>
 

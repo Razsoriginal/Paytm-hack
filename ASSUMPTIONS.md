@@ -1,5 +1,16 @@
 # Assumptions and known limitations
 
+## Follow-up scope and conflicts
+- The requested `saathi_master_prompt.md` is not present in this checkout; the master
+  requirements cannot yet be checked against the follow-up. The follow-up takes precedence
+  where it conflicts with those requirements.
+- SQLite remains the local memory fallback; it is not an AI provider. New document and
+  language features must use Sarvam or mock mode, without requiring new environment variables.
+- The v2 backend is work in progress. Bill uploads, spend and inventory do not yet have the
+  complete requested UI and evaluation coverage. Live Document AI is unverified.
+- Booking cancellation compensation and the remaining v2 safety and end-to-end tests still
+  require work; the existing passing tests do not establish v2 completion.
+
 ## Scope
 - **Workflows built:** C1 trip bundle, C2 failed payment and refund, B1 preference-to-offer
   bridge, W1 money not received, W2 collect dues.

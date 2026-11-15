@@ -16,7 +16,7 @@
 		[Smartphone, 'Recharge a phone', 'Jio 299 recharge'],
 	];
 	const kindIcon = { train: TrainFront, bus: BusFront, flight: Plane, hotel: BedDouble };
-	const consentTitle = { personalisation: 'Personal plans', offers: 'Offers from nearby shops' };
+	const consentTitle = { personalisation: 'Personal plans', offers: 'Offers from nearby shops', spend_insights: 'Spend insights' };
 	let tab = $state('chat');
 	let d = $state(null);
 	let cat = $state('budget');
@@ -24,6 +24,16 @@
 	let bills = $state({});
 	let redeeming = $state({});
 	let note = $state('');
+	let managing = $state(null);
+	let changeDate = $state('');
+	let changeResult = $state(null);
+	async function requestChange(id, action) {
+		try {
+			changeResult = await api(`/consumer/${app.uid}/bookings/${id}/manage`, 'POST', {
+				action, new_date: action === 'reschedule' ? changeDate : null,
+			});
+		} catch (e) { note = e.message; }
+	}
 	const me = $derived(app.boot.users.find((u) => u.id === app.uid));
 	const offers = $derived(d?.inbox.filter((n) => n.meta.type === 'offer').length ?? 0);
 	const tabs = $derived([
@@ -133,6 +143,22 @@
 									</li>
 								{/each}
 							</ol>
+							{#if b.status === 'confirmed'}
+								<button class="btn mt-3" onclick={() => { managing = b.id; changeResult = null; note = ''; }}>Manage</button>
+								{#if managing === b.id}
+									<div class="mt-3 grid gap-2">
+										<label class="hint">New date <input class="field" type="date" bind:value={changeDate} /></label>
+										<div class="flex gap-2"><button class="btn" disabled={!changeDate} onclick={() => requestChange(b.id, 'reschedule')}>Quote reschedule</button><button class="btn" onclick={() => requestChange(b.id, 'cancel')}>Quote cancellation</button></div>
+										{#if changeResult}
+											<p class="text-sm">{changeResult.reply}</p>
+											{#if changeResult.approval}
+												{#key changeResult.approval.id}<Receipt approval={changeResult.approval} onresult={(r) => { changeResult = r; load(); }} />{/key}
+											{/if}
+										{/if}
+										{#if note}<p class="hint">{note}</p>{/if}
+									</div>
+								{/if}
+							{/if}
 						</article>
 					{/each}
 				</div>

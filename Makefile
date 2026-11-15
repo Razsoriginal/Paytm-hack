@@ -4,10 +4,10 @@ STAMP := $(VENV)/.installed
 export PYTHONPATH := backend
 
 # The virtualenv is created and filled on first use, and refreshed when requirements change.
-$(STAMP): backend/requirements.txt
+$(STAMP): requirements.txt
 	python3 -m venv $(VENV)
 	$(PY) -m pip install -q --upgrade pip
-	$(PY) -m pip install -q -r backend/requirements.txt
+	$(PY) -m pip install -q -r requirements.txt
 	touch $(STAMP)
 
 install: $(STAMP)
