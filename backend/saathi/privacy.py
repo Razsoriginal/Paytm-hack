@@ -13,7 +13,9 @@ from .services import audit, impact
 SCOPES = {
 	"personalisation": "Use what I tell Saathi to tailor my own plans.",
 	"offers": "Match me, without sharing who I am, to offers from nearby shops. Off by default.",
+	"spend_insights": "Show me insights about my own spending. Never shared with shops.",
 }
+DEFAULT_ON = {"spend_insights"}
 # Never stored and never inferred, whatever the source.
 SENSITIVE_HINTS = ("health", "religio", "caste", "politic", "sexual", "medical", "disab")
 
@@ -24,7 +26,7 @@ class PreferenceRejected(ValueError):
 
 def consent_state(s: Session, user_id: int) -> dict[str, bool]:
 	rows = {c.scope: c.granted for c in s.query(Consent).filter_by(user_id=user_id).all()}
-	return {scope: rows.get(scope, False) for scope in SCOPES}
+	return {scope: rows.get(scope, scope in DEFAULT_ON) for scope in SCOPES}
 
 
 def set_consent(s: Session, user_id: int, scope: str, granted: bool) -> None:

@@ -1,6 +1,6 @@
 import os
 
-os.environ.update(DATABASE_URL="sqlite://", SARVAM_MODE="mock", LLM_MODE="mock",
+os.environ.update(DATABASE_URL="sqlite://", DATA_DIR="/tmp/saathi-test-data", SARVAM_MODE="mock", LLM_MODE="mock",
 	COGNEE_MODE="mock", PAYTM_PG_MODE="mock", MOCK_PARTNER_FAILURE_RATE="0")
 
 import pytest  # noqa: E402

@@ -89,6 +89,21 @@ class Settings:
 		self.MOCK_PARTNER_FAILURE_RATE = _f("MOCK_PARTNER_FAILURE_RATE", 0.0)
 		self.SEED_RANDOM = _i("SEED_RANDOM", 42)
 
+		# Tunables with code defaults. An env override is honoured but never required.
+		self.UPLOAD_MAX_MB = _f("UPLOAD_MAX_MB", 10)
+		self.UPLOAD_RETENTION_HOURS = _f("UPLOAD_RETENTION_HOURS", 24)
+		self.EXTRACTION_CONFIDENCE_AUTO = _f("EXTRACTION_CONFIDENCE_AUTO", 0.9)
+		self.EXTRACTION_CONFIDENCE_MIN = _f("EXTRACTION_CONFIDENCE_MIN", 0.6)
+		self.BILL_ANOMALY_FACTOR = _f("BILL_ANOMALY_FACTOR", 1.8)
+		self.BUDGET_ALERT_PCT = _f("BUDGET_ALERT_PCT", 80)
+		self.LOW_STOCK_DEFAULT_DAYS = _f("LOW_STOCK_DEFAULT_DAYS", 3)
+		self.NUDGE_MAX_PER_USER_PER_DAY = _i("NUDGE_MAX_PER_USER_PER_DAY", 3)
+		self.DOC_JOB_TIMEOUT_SEC = _f("DOC_JOB_TIMEOUT_SEC", 60)
+		self.STOCK_UNDO_MINUTES = _i("STOCK_UNDO_MINUTES", 10)
+		self.REORDER_COVER_DAYS = _i("REORDER_COVER_DAYS", 14)
+		self.DEAD_STOCK_DAYS = _i("DEAD_STOCK_DAYS", 30)
+		self.DATA_DIR = Path(_s("DATA_DIR", str(ROOT / "data")))
+
 	@staticmethod
 	def _mode(key: str, has_key, default: str = "live") -> str:
 		"""Live when a key exists unless the mode says mock. No key always means mock."""

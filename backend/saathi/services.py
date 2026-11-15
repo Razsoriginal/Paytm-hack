@@ -18,11 +18,21 @@ MAX_ATTEMPTS = 3
 
 
 # ---------------- audit + timeline + impact ----------------
+def _mask(v):
+	"""Consumer and account numbers never reach the audit log in full."""
+	if isinstance(v, dict):
+		return {k: ("•" * max(len(str(x)) - 4, 0) + str(x)[-4:]) if k == "consumer_number" and x
+			else _mask(x) for k, x in v.items()}
+	if isinstance(v, list):
+		return [_mask(x) for x in v]
+	return v
+
+
 def audit(s: Session, actor: str, what: str, why: str = "", tool: str = "", inputs: dict | None = None,
 		outputs: dict | None = None, approval_id: int | None = None, outcome: str = "",
 		case_id: int | None = None, original_text: str = "", translated_text: str = "") -> None:
-	s.add(AuditLog(actor=actor, what=what, why=why, tool=tool, inputs=inputs or {},
-		outputs=outputs or {}, approval_id=approval_id, outcome=outcome, case_id=case_id,
+	s.add(AuditLog(actor=actor, what=what, why=why, tool=tool, inputs=_mask(inputs or {}),
+		outputs=_mask(outputs or {}), approval_id=approval_id, outcome=outcome, case_id=case_id,
 		original_text=original_text, translated_text=translated_text))
 
 
@@ -169,7 +179,8 @@ def execute(s: Session, p: ProposedAction) -> ActionResult:
 
 	d = policy.decide(s, p)
 	if not row:
-		row = Action(case_id=p.case_id, tool=p.tool, args=p.args, idempotency_key=p.idempotency_key,
+		row = Action(case_id=p.case_id, tool=p.tool, args=_mask(p.args),
+			idempotency_key=p.idempotency_key,
 			decision=d.outcome)
 		s.add(row)
 	row.decision, row.reason = d.outcome, d.reason

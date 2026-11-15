@@ -25,13 +25,14 @@ def trip(s, uid, text):
 # ---------- C1 ----------
 def test_trip_happy_path_and_double_submit(s):
 	before = bal(s, 1)
+	paid = s.query(Transaction).filter_by(user_id=1, kind="booking").count()
 	r = trip(s, 1, "Mumbai se Pune kal 1 raat")
 	total, aid = r["approval"]["payload"]["total"], r["approval"]["id"]
 	assert "Booked" in manager.approve(s, aid, True)["reply"]
 	assert bal(s, 1) == before - total
 	manager.approve(s, aid, True)  # double submit
 	assert bal(s, 1) == before - total
-	assert s.query(Transaction).filter_by(user_id=1, kind="booking").count() == 1
+	assert s.query(Transaction).filter_by(user_id=1, kind="booking").count() == paid + 1
 
 
 def test_approval_hash_mismatch_rejected(s):

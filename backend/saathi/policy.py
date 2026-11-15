@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import (
-	Approval, Cohort, Consent, ExperimentAssignment, Merchant, OfferDelivery, Offer, Transaction,
-	Wallet, now,
+	Approval, BillPayment, Biller, Cohort, Consent, ExperimentAssignment, Merchant, OfferDelivery,
+	Offer, Transaction, Upload, Wallet, now,
 )
 from .tools import REGISTRY
 
@@ -29,8 +29,10 @@ AUTONOMY: dict[str, dict[str, dict[str, str]]] = {
 	"consumer": {"*": {
 		"pay_from_wallet": "L3", "pay_via_upi_sim": "L3", "mobile_recharge": "L3",
 		"pay_bill": "L3", "confirm_booking": "L3", "redeem_offer": "L3",
-		"hold_booking": "L2", "cancel_booking": "L2", "refund_payment": "L2",
+		"apply_change": "L3", "cancel_booking": "L3", "pay_uploaded_bill": "L3",
+		"hold_booking": "L2", "refund_payment": "L2", "set_category": "L2",
 		"retry_refund": "L2", "raise_ticket": "L2", "notify": "L2", "deliver_offer": "L2",
+		"set_budget": "L2", "plan_goal": "L2",
 		"create_support_ticket": "L2", "escalate_to_human": "L2",
 	}},
 	"merchant": {
@@ -39,9 +41,13 @@ AUTONOMY: dict[str, dict[str, dict[str, str]]] = {
 			"notify": "L2", "create_support_ticket": "L2", "escalate_to_human": "L2",
 			"request_bank_detail_update": "L3", "send_khata_reminder": "L3",
 			"create_offer_campaign": "L3", "start_loan_application": "L3",
+			# small stock changes run on their own and can be undone
+			"add_product": "L2", "adjust_stock": "L2", "undo_stock_change": "L2",
 		},
-		# Soundbox-only merchants: low-risk actions run without a tap, by design.
-		"T1": {"send_khata_reminder": "L2", "start_loan_application": "L1"},
+		# Soundbox-only merchants: low-risk actions run without a tap, by design. Stock is
+		# voice-first and read-only on this tier, so changes are only suggested.
+		"T1": {"send_khata_reminder": "L2", "start_loan_application": "L1",
+			"add_product": "L1", "adjust_stock": "L1", "undo_stock_change": "L1"},
 	},
 	"ops": {"*": {}},
 	"system": {"*": {}},
@@ -176,6 +182,25 @@ def decide(s: Session, p: ProposedAction) -> Decision:
 		c = s.query(Cohort).filter_by(merchant_id=p.actor_id, key=p.args.get("cohort_key")).first()
 		if not c or c.size < settings.COHORT_MIN_SIZE:
 			return Decision(outcome="blocked", level="L0", reason="cohort_below_minimum")
+
+	# ---- uploaded bills: only confirmed fields, known billers, never twice ----
+	if p.tool == "pay_uploaded_bill":
+		a = p.args
+		u = s.get(Upload, a["upload_id"])
+		same = u and u.status == "confirmed" and all(u.confirmed.get(k) == a.get(k) for k in (
+			"biller", "consumer_number", "amount_due", "bill_number", "bill_period"))
+		if not same:
+			return Decision(outcome="blocked", level="L0", reason="unconfirmed_extraction")
+		if not s.query(Biller).filter_by(name=a["biller"]).first():
+			return Decision(outcome="escalate", level="L4", reason="unknown_biller")
+		dup = s.query(BillPayment).filter_by(user_id=p.actor_id, biller=a["biller"])
+		if a.get("bill_number") or a.get("bill_period"):
+			if a.get("bill_number"):
+				dup = dup.filter_by(bill_number=a["bill_number"])
+			if a.get("bill_period"):
+				dup = dup.filter_by(bill_period=a["bill_period"])
+			if dup.first():
+				return Decision(outcome="blocked", level="L0", reason="duplicate_bill")
 
 	# ---- compensation: only ever returns money Saathi just took ----
 	if p.compensation:

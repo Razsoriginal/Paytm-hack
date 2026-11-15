@@ -177,11 +177,14 @@ def execute_trip(s: Session, a: Approval) -> dict:
 			return _esc(s, case, "Booking state could not be verified", "unverified_state",
 				plan["total"])
 		b = Booking(user_id=uid, status="confirmed", total=plan["total"], plan_hash=a.payload_hash,
-			title=f"{plan['origin']} → {plan['dest']} on {plan['date']}")
+			title=f"{plan['origin']} → {plan['dest']} on {plan['date']}", travel_date=plan["date"],
+			constraints=case.state["constraints"],
+			timeline=[{"at": now().isoformat(), "event": f"Booked for ₹{plan['total']:.0f}"}])
 		s.add(b)
 		s.flush()
 		for it in items:
 			it.booking_id = b.id
+			it.details = {**it.details, "date": plan["date"]}
 		impact(s, "trip_booked", "consumer", uid, plan["total"], booking_id=b.id)
 		memory.add(s, f"user:{uid}", "booking", f"Booked {b.title} for ₹{b.total:.0f}")
 		close_case(s, case)

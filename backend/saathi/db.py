@@ -78,6 +78,9 @@ class Booking(Base):
 	total: Mapped[float] = mapped_column(Float, default=0)
 	plan_hash: Mapped[str] = mapped_column(String, default="")
 	title: Mapped[str] = mapped_column(String, default="")
+	travel_date: Mapped[str] = mapped_column(String, default="")  # ISO date of departure
+	constraints: Mapped[dict] = mapped_column(JSON, default=dict)
+	timeline: Mapped[list] = mapped_column(JSON, default=list)
 	created_at: Mapped[datetime] = _ts()
 
 
@@ -152,6 +155,8 @@ class Transaction(Base):
 	order_state: Mapped[str] = mapped_column(String, default="fulfilled")  # fulfilled|missing|failed
 	ref: Mapped[str] = mapped_column(String, default="")
 	meta: Mapped[dict] = mapped_column(JSON, default=dict)
+	category: Mapped[str] = mapped_column(String, default="")
+	merchant_name: Mapped[str] = mapped_column(String, default="")
 	created_at: Mapped[datetime] = _ts()
 
 
@@ -370,6 +375,121 @@ class MemoryItem(Base):
 	text: Mapped[str] = mapped_column(Text)
 	meta: Mapped[dict] = mapped_column(JSON, default=dict)
 	ts: Mapped[datetime] = _ts()
+
+
+# ---- bills and uploads ----
+class Biller(Base):
+	__tablename__ = "billers"
+	id: Mapped[int] = _pk()
+	name: Mapped[str] = mapped_column(String, unique=True)
+	category: Mapped[str] = mapped_column(String)
+	consumer_regex: Mapped[str] = mapped_column(String)
+	min_amount: Mapped[float] = mapped_column(Float, default=50)
+	max_amount: Mapped[float] = mapped_column(Float, default=20000)
+
+
+class BillPayment(Base):
+	__tablename__ = "bill_payments"
+	id: Mapped[int] = _pk()
+	user_id: Mapped[int] = mapped_column(Integer, index=True)
+	biller: Mapped[str] = mapped_column(String)
+	consumer_number: Mapped[str] = mapped_column(String, default="")
+	bill_number: Mapped[str] = mapped_column(String, default="")
+	bill_period: Mapped[str] = mapped_column(String, default="")
+	amount: Mapped[float] = mapped_column(Float)
+	txn_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+	paid_at: Mapped[datetime] = _ts()
+
+
+class Upload(Base):
+	__tablename__ = "uploads"
+	id: Mapped[int] = _pk()
+	actor_type: Mapped[str] = mapped_column(String)
+	actor_id: Mapped[int] = mapped_column(Integer, index=True)
+	purpose: Mapped[str] = mapped_column(String)  # bill | stock
+	file_hash: Mapped[str] = mapped_column(String, index=True)
+	path: Mapped[str] = mapped_column(String, default="")
+	mime: Mapped[str] = mapped_column(String, default="")
+	size: Mapped[int] = mapped_column(Integer, default=0)
+	status: Mapped[str] = mapped_column(String, default="extracted")  # extracted|confirmed|paid|rejected
+	fields: Mapped[dict] = mapped_column(JSON, default=dict)
+	confirmed: Mapped[dict] = mapped_column(JSON, default=dict)
+	created_at: Mapped[datetime] = _ts()
+	deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---- spend insights ----
+class CategoryCorrection(Base):
+	__tablename__ = "category_corrections"
+	__table_args__ = (UniqueConstraint("user_id", "merchant_name"),)
+	id: Mapped[int] = _pk()
+	user_id: Mapped[int] = mapped_column(Integer, index=True)
+	merchant_name: Mapped[str] = mapped_column(String)
+	category: Mapped[str] = mapped_column(String)
+
+
+class Budget(Base):
+	__tablename__ = "budgets"
+	__table_args__ = (UniqueConstraint("user_id", "category"),)
+	id: Mapped[int] = _pk()
+	user_id: Mapped[int] = mapped_column(Integer, index=True)
+	category: Mapped[str] = mapped_column(String)
+	monthly_limit: Mapped[float] = mapped_column(Float)
+	alerted_month: Mapped[str] = mapped_column(String, default="")
+
+
+class Goal(Base):
+	__tablename__ = "goals"
+	id: Mapped[int] = _pk()
+	user_id: Mapped[int] = mapped_column(Integer, index=True)
+	name: Mapped[str] = mapped_column(String)
+	target: Mapped[float] = mapped_column(Float)
+	months: Mapped[int] = mapped_column(Integer)
+	created_at: Mapped[datetime] = _ts()
+
+
+# ---- merchant inventory ----
+class Supplier(Base):
+	__tablename__ = "suppliers"
+	id: Mapped[int] = _pk()
+	merchant_id: Mapped[int] = mapped_column(Integer, index=True)
+	name: Mapped[str] = mapped_column(String)
+
+
+class Product(Base):
+	__tablename__ = "products"
+	id: Mapped[int] = _pk()
+	merchant_id: Mapped[int] = mapped_column(Integer, index=True)
+	sku: Mapped[str] = mapped_column(String)
+	name: Mapped[str] = mapped_column(String)
+	unit: Mapped[str] = mapped_column(String, default="pc")
+	cost: Mapped[float] = mapped_column(Float, default=0)
+	price: Mapped[float] = mapped_column(Float, default=0)
+	stock: Mapped[float] = mapped_column(Float, default=0)
+	reorder_level: Mapped[float] = mapped_column(Float, default=0)
+	supplier_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class StockMovement(Base):
+	__tablename__ = "stock_movements"
+	id: Mapped[int] = _pk()
+	merchant_id: Mapped[int] = mapped_column(Integer, index=True)
+	product_id: Mapped[int] = mapped_column(Integer, index=True)
+	delta: Mapped[float] = mapped_column(Float)
+	reason: Mapped[str] = mapped_column(String)  # stock_in|sale|damaged|correction|undo
+	prev: Mapped[dict] = mapped_column(JSON, default=dict)  # values to restore on undo
+	undone: Mapped[bool] = mapped_column(Boolean, default=False)
+	created_at: Mapped[datetime] = _ts()
+
+
+class SalesLine(Base):
+	__tablename__ = "sales_lines"
+	id: Mapped[int] = _pk()
+	merchant_id: Mapped[int] = mapped_column(Integer, index=True)
+	product_id: Mapped[int] = mapped_column(Integer, index=True)
+	qty: Mapped[float] = mapped_column(Float)
+	amount: Mapped[float] = mapped_column(Float)
+	created_at: Mapped[datetime] = _ts()
 
 
 def make_engine(url: str | None = None):

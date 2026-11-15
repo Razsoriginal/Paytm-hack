@@ -11,7 +11,7 @@ from ..adapters.speech import speech
 from ..db import Approval, Case, Merchant, Notification, Transaction, User, now
 from ..policy import ProposedAction as PA
 from ..services import audit, close_case, create_approval, decide_approval, execute, open_case, run_log
-from . import flows
+from . import flows, insights, manage, stock
 from .flows import out
 
 HELP = {
@@ -21,6 +21,7 @@ HELP = {
 		"an offer for nearby customers. What do you need?",
 }
 WORKFLOW = {"trip": "C1", "payment_issue": "C2", "refund_status": "C2", "win_back": "B1",
+	"booking_change": "C4", "concern": "C4", "spend": "C5", "budget": "C5", "inventory": "M1",
 	"offers": "B1", "money_not_received": "W1", "device_issue": "W1", "collect_dues": "W2"}
 
 
@@ -38,6 +39,13 @@ def dispatch(s: Session, a: Approval) -> dict:
 	run_log(s, a.case_id, "Approval", "approve", f"Approved via {a.decided_via}: {a.title}")
 	if a.kind == "trip":
 		return flows.execute_trip(s, a)
+	if a.kind == "change":
+		return manage.apply(s, a)
+	if a.kind == "stock_in":
+		return stock.apply_upload(s, a)
+	if a.kind == "bill":
+		from .. import bills
+		return bills.pay(s, a)
 	if a.kind == "offer":
 		return flows.launch_offer(s, a)
 	if a.kind == "redeem":
@@ -142,6 +150,13 @@ def handle(s: Session, actor_type: str, actor_id: int, text: str, language: str 
 			res = flows.care(s, actor, intent, case)
 		elif name in ("recharge", "bill"):
 			res = _payment(s, actor, intent, case)
+		elif name == "booking_change":
+			res = manage.request_change(s, actor, case, intent.action or "status",
+				intent.booking_id, intent.date)
+		elif name == "concern":
+			res = manage.concern(s, actor, english, case, intent.booking_id)
+		elif name in ("spend", "budget"):
+			res = insights.answer(s, actor, intent, case)
 		elif name == "wallet":
 			res = out(f"Your wallet balance is ₹{flows.wallet(s, actor_id):.0f}.")
 		elif intent.risk:
@@ -154,6 +169,8 @@ def handle(s: Session, actor_type: str, actor_id: int, text: str, language: str 
 			res = flows.money_not_received(s, actor, case)
 		elif name == "collect_dues":
 			res = flows.collect_dues(s, actor, case)
+		elif name == "inventory":
+			res = stock.handle(s, actor, intent, case)
 		elif name in ("win_back", "offers"):
 			res = flows.draft_offer(s, actor, case)
 		elif name == "summary":

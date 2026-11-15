@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import (
 	BookingItem, Booking, Case, Customer, Device, Inventory, KhataEntry, Merchant, Notification,
-	Offer, OfferDelivery, Refund, Settlement, Transaction, User, Wallet, now,
+	Offer, OfferDelivery, Refund, Settlement, Transaction, Upload, User, Wallet, BillPayment, now,
 )
 
 
@@ -236,6 +236,23 @@ def pay_bill(s, user_id: int, biller: str, amount: float) -> dict:
 	return {"txn_id": t.id, "status": "paid"}
 
 
+@tool(side_effect=True, money="debit")
+def pay_uploaded_bill(s, user_id: int, upload_id: int, biller: str, consumer_number: str,
+		amount_due: float, bill_number: str = "", bill_period: str = "", due_date: str = "") -> dict:
+	"""Pay a bill from fields the user confirmed on the review card."""
+	w = s.get(Wallet, user_id)
+	if w.balance < amount_due:
+		raise ToolError("insufficient_balance")
+	w.balance -= amount_due
+	t = _txn(s, user_id, amount_due, "bill", biller=biller, bill_number=bill_number)
+	t.category, t.merchant_name = "bills", biller
+	s.add(BillPayment(user_id=user_id, biller=biller, consumer_number=consumer_number,
+		bill_number=bill_number, bill_period=bill_period, amount=amount_due, txn_id=t.id))
+	if u := s.get(Upload, upload_id):
+		u.status = "paid"
+	return {"txn_id": t.id, "ref": t.ref, "status": "paid", "balance": w.balance}
+
+
 @tool()
 def get_refund_status(s, refund_id: int) -> dict:
 	r = s.get(Refund, refund_id)
@@ -264,6 +281,60 @@ def retry_refund(s, refund_id: int) -> dict:
 @tool(side_effect=True)
 def raise_ticket(s, user_id: int, summary: str) -> dict:
 	return create_support_ticket(s, "consumer", user_id, summary)
+
+
+# ---------------- booking management ----------------
+@tool()
+def get_change_options(s, booking_id: int, item_id: int) -> dict:
+	from . import changequote
+	return changequote.get_change_options(s, booking_id, item_id)
+
+
+@tool()
+def quote_change(s, booking_id: int, new_date: str | None = None, item_id: int | None = None,
+		new_inventory_id: int | None = None, units: int | None = None) -> dict:
+	from . import changequote
+	return changequote.quote_change(s, booking_id, new_date, item_id, new_inventory_id, units)
+
+
+@tool()
+def quote_cancellation(s, booking_id: int, item_id: int | None = None) -> dict:
+	from . import changequote
+	return changequote.quote_cancellation(s, booking_id, item_id)
+
+
+@tool(side_effect=True)
+def apply_change(s, item_id: int, new_date: str, new_inventory_id: int, units: int,
+		price: float) -> dict:
+	"""Move one booked item to a new date, option or size. Returns the old values so a saga
+	can put them back."""
+	item = s.get(BookingItem, item_id)
+	if not item or item.status != "confirmed":
+		raise ToolError("not_found")
+	inv = s.get(Inventory, new_inventory_id)
+	if inv.fail_mode == "reschedule_fails":
+		inv.fail_mode = ""
+		raise ToolError("partner_rejected_change", f"{inv.name} could not confirm the change")
+	old = {"new_date": item.details.get("date", ""), "new_inventory_id": item.inventory_id,
+		"units": item.units, "price": item.price}
+	if inv.id != item.inventory_id:
+		if inv.available < 1:
+			raise ToolError("sold_out")
+		s.get(Inventory, item.inventory_id).available += 1
+		inv.available -= 1
+	item.inventory_id, item.units, item.price = inv.id, units, price
+	item.details = {**item.details, "name": inv.name, "date": new_date}
+	return {"item_id": item.id, "status": "changed", "date": new_date, "name": inv.name,
+		"previous": old}
+
+
+@tool()
+def get_ticket_status(s, ticket_id: int) -> dict:
+	c = s.get(Case, ticket_id)
+	if not c or c.workflow != "ticket":
+		raise ToolError("not_found")
+	return {"ticket_id": c.id, "status": c.status, "summary": c.summary,
+		"opened": c.created_at.isoformat(), "evidence": c.state}
 
 
 # ---------------- merchant ----------------
